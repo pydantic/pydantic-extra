@@ -38,10 +38,10 @@ classifiers = [
     'Topic :: Internet',
 ]
 requires-python = '>=3.7'
-dependencies = [
-    'pydantic>=2.0b3',
-]
 dynamic = ['version']
+
+[project.dependencies]
+pydantic = { git = 'https://github.com/pydantic/pydantic.git' }
 
 [project.optional-dependencies]
 all = [
