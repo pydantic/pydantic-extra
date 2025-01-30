@@ -1,11 +1,11 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time
 from datetime import timezone as tz
 
 import pendulum
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from pydantic_extra_types.pendulum_dt import Date, DateTime, Duration
+from pydantic_extra_types.pendulum_dt import Date, DateTime, Duration, Time
 
 UTC = tz.utc
 
@@ -14,6 +14,10 @@ DtTypeAdapter = TypeAdapter(datetime)
 
 class DtModel(BaseModel):
     dt: DateTime
+
+
+class TimeModel(BaseModel):
+    t: Time
 
 
 class DateTimeNonStrict(DateTime, strict=False):
@@ -335,6 +339,95 @@ def test_pendulum_dt_non_strict_malformed(dt):
 
 
 @pytest.mark.parametrize(
+    'instance',
+    [
+        pendulum.now().time(),
+        datetime.now().time(),
+        datetime.now(UTC).time(),
+    ],
+)
+def test_existing_time_instance(instance):
+    """Verifies that constructing a model with an existing pendulum time doesn't throw."""
+    model = TimeModel(t=instance)
+    if isinstance(instance, pendulum.Time):
+        assert model.t == instance
+        t = model.t
+    else:
+        assert model.t.replace(tzinfo=UTC) == pendulum.instance(instance)  # pendulum defaults to UTC
+        t = model.t
+
+    assert t.hour == instance.hour
+    assert t.minute == instance.minute
+    assert t.second == instance.second
+    assert t.microsecond == instance.microsecond
+    assert isinstance(t, pendulum.Time)
+    assert type(t) is Time
+    if t.tzinfo != instance.tzinfo:
+        date = Date(2022, 1, 22)
+        assert t.tzinfo.utcoffset(DateTime.combine(date, t)) == instance.tzinfo.utcoffset(DateTime.combine(date, instance))
+
+
+@pytest.mark.parametrize(
+    'dt',
+    [
+        "17:53:12.266369",
+        "17:53:46",
+    ],
+)
+def test_pendulum_time_from_serialized(dt):
+    """Verifies that building an instance from serialized, well-formed strings decode properly."""
+    dt_actual = pendulum.parse(dt, exact=True)
+    model = TimeModel(t=dt)
+    assert model.t == dt_actual.replace(tzinfo=UTC)
+    assert type(model.t) is Time
+    assert isinstance(model.t, pendulum.Time)
+
+
+def get_invalid_dt_common():
+    return [
+        None,
+        'malformed',
+        'P10Y10M10D',
+        float('inf'),
+        float('-inf'),
+        'inf',
+        '-inf',
+        'INF',
+        '-INF',
+        '+inf',
+        'Infinity',
+        '+Infinity',
+        '-Infinity',
+        'INFINITY',
+        '+INFINITY',
+        '-INFINITY',
+        'infinity',
+        '+infinity',
+        '-infinity',
+        float('nan'),
+        'nan',
+        'NaN',
+        'NAN',
+        '+nan',
+        '-nan',
+    ]
+
+
+dt_strict = get_invalid_dt_common()
+dt_strict.append(pendulum.now().to_iso8601_string()[:5])
+
+
+@pytest.mark.parametrize(
+    'dt',
+    dt_strict,
+)
+def test_pendulum_time_malformed(dt):
+    """Verifies that the instance fails to validate if malformed time is passed."""
+    with pytest.raises(ValidationError):
+        TimeModel(t=dt)
+
+
+@pytest.mark.parametrize(
     'invalid_value',
     [None, 'malformed', pendulum.today().to_iso8601_string()[:5], 'P10Y10M10D'],
 )
@@ -367,6 +460,9 @@ def test_pendulum_duration_malformed(delta_t):
         (Date, '2021-01-01', pendulum.Date),
         (Date, date(2021, 1, 1), pendulum.Date),
         (Date, pendulum.date(2021, 1, 1), pendulum.Date),
+        (Time, '12:00:00', pendulum.Time),
+        (Time, time(12, 0, 0), pendulum.Time),
+        (Time, pendulum.time(12, 0, 0), pendulum.Time),
         (DateTime, '2021-01-01T12:00:00', pendulum.DateTime),
         (DateTime, datetime(2021, 1, 1, 12, 0, 0), pendulum.DateTime),
         (DateTime, pendulum.datetime(2021, 1, 1, 12, 0, 0), pendulum.DateTime),

@@ -8,12 +8,13 @@ try:
     from pendulum import Date as _Date
     from pendulum import DateTime as _DateTime
     from pendulum import Duration as _Duration
+    from pendulum import Time as _Time
     from pendulum import parse
 except ModuleNotFoundError as e:  # pragma: no cover
     raise RuntimeError(
         'The `pendulum_dt` module requires "pendulum" to be installed. You can install it with "pip install pendulum".'
     ) from e
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time
 from typing import Any
 
 from pydantic import GetCoreSchemaHandler
@@ -95,6 +96,68 @@ class DateTime(_DateTime, metaclass=DateTimeSettings):
                 raise PydanticCustomError('value_error', 'value is not a valid datetime') from exc
 
 
+class Time(_Time):
+    """A `pendulum.Time` object. At runtime, this type decomposes into pendulum.Time automatically.
+    This type exists because Pydantic throws a fit on unknown types.
+
+    ```python
+    from pydantic import BaseModel
+    from pydantic_extra_types.pendulum_dt import Time
+
+
+    class test_model(BaseModel):
+        dt: Time
+
+
+    print(test_model(dt='00:00:00'))
+
+    # > test_model(dt=Time(0, 0, 0))
+    ```
+    """
+
+    __slots__: list[str] = []
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+        """Return a Pydantic CoreSchema with the Time validation
+
+        Args:
+            source: The source type to be converted.
+            handler: The handler to get the CoreSchema.
+
+        Returns:
+            A Pydantic CoreSchema with the Time validation.
+        """
+        return core_schema.no_info_wrap_validator_function(cls._validate, core_schema.time_schema())
+
+    @classmethod
+    def _validate(cls, value: Any, handler: core_schema.ValidatorFunctionWrapHandler) -> Time:
+        """Validate the Time object and return it.
+
+        Args:
+            value: The value to validate.
+            handler: The handler to get the CoreSchema.
+
+        Returns:
+            The validated value or raises a PydanticCustomError.
+        """
+        # if we are passed an existing instance, pass it straight through.
+        if isinstance(value, (_Time, time)):
+            return Time.instance(value, tz=value.tzinfo)
+        
+        # otherwise, parse it.
+        try:
+            parsed = parse(value, exact=True)
+            if isinstance(parsed, _DateTime):
+                dt = DateTime.instance(parsed)
+                return Time.instance(dt.time())
+            if isinstance(parsed, _Time):
+                return Time.instance(parsed)
+            raise ValueError(f'value is not a valid time it is a {type(parsed)}')
+        except Exception as exc:
+            raise PydanticCustomError('value_error', 'value is not a valid time') from exc
+
+
 class Date(_Date):
     """A `pendulum.Date` object. At runtime, this type decomposes into pendulum.Date automatically.
     This type exists because Pydantic throws a fit on unknown types.
@@ -149,7 +212,7 @@ class Date(_Date):
             parsed = parse(value)
             if isinstance(parsed, (_DateTime, _Date)):
                 return Date(parsed.year, parsed.month, parsed.day)
-            raise ValueError('value is not a valid date it is a {type(parsed)}')
+            raise ValueError(f'value is not a valid date it is a {type(parsed)}')
         except Exception as exc:
             raise PydanticCustomError('value_error', 'value is not a valid date') from exc
 
