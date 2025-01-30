@@ -114,6 +114,7 @@ quote-style = "single"
 
 [tool.ruff.lint.per-file-ignores]
 'pydantic_extra_types/color.py' = ['E741']
+'pydantic_extra_types/dsn.py' = ['UP036']
 
 [tool.coverage.run]
 source = ['pydantic_extra_types']
